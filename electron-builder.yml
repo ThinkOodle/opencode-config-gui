@@ -23,6 +23,8 @@ asarUnpack:
   - resources/**
 mac:
   icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
   entitlements: resources/entitlements.mac.parent.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:

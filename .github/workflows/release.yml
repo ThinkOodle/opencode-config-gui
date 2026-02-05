@@ -61,15 +61,15 @@ jobs:
             -A -t cert -f pkcs12 \
             -k "$KEYCHAIN_PATH"
           
-          # Set keychain as default and allow codesign access
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          # Add to keychain search list (keep existing keychains)
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
           security default-keychain -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           
-          # Export path for electron-builder
-          echo "CSC_LINK=$CERTIFICATE_PATH" >> $GITHUB_ENV
-          echo "CSC_KEY_PASSWORD=$APPLE_CERTIFICATE_PASSWORD" >> $GITHUB_ENV
+          # Verify certificate is available
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning
 
       - name: Build and publish
         env:
@@ -77,6 +77,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: npm run release
 
       - name: Cleanup keychain
