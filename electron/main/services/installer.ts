@@ -90,43 +90,80 @@ export class Installer {
         return { success: true, message: 'Homebrew already installed' }
       }
 
-      // Run the official Homebrew install script
-      const installScript = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-      
+      // First, download the install script
+      const downloadResult = await execAsync(
+        'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/homebrew-install.sh',
+        { timeout: 30000 }
+      )
+
+      // Make it executable
+      await execAsync('chmod +x /tmp/homebrew-install.sh')
+
+      // Run the install script with proper environment
+      // CI=1 is more reliable than NONINTERACTIVE for the Homebrew installer
       return new Promise((resolve) => {
-        const child = spawn('/bin/bash', ['-c', installScript], {
+        const child = spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
           env: {
             ...process.env,
-            NONINTERACTIVE: '1' // Run non-interactively
-          }
+            CI: '1',                    // Tells Homebrew to run non-interactively
+            NONINTERACTIVE: '1',        // Backup flag
+            HOMEBREW_NO_ANALYTICS: '1'  // Disable analytics during install
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
         })
 
         let stdout = ''
         let stderr = ''
 
         child.stdout?.on('data', (data) => {
-          stdout += data.toString()
+          const text = data.toString()
+          stdout += text
+          console.log('[Homebrew Install]', text)
         })
 
         child.stderr?.on('data', (data) => {
-          stderr += data.toString()
+          const text = data.toString()
+          stderr += text
+          console.error('[Homebrew Install Error]', text)
         })
 
         child.on('close', async (code) => {
+          console.log('[Homebrew Install] Process exited with code:', code)
+          
+          // Clean up the temp script
+          try {
+            await execAsync('rm -f /tmp/homebrew-install.sh')
+          } catch {
+            // Ignore cleanup errors
+          }
+
           if (code === 0) {
-            // Configure PATH for Apple Silicon Macs
+            // Configure PATH
             await this.configureHomebrewPath()
             resolve({ success: true, message: 'Homebrew installed successfully' })
           } else {
-            resolve({ 
-              success: false, 
-              message: 'Homebrew installation failed',
-              error: stderr || stdout
-            })
+            // Check if Homebrew was actually installed despite non-zero exit
+            const recheckStatus = await this.checker.check('homebrew')
+            if (recheckStatus.installed) {
+              await this.configureHomebrewPath()
+              resolve({ success: true, message: 'Homebrew installed successfully' })
+            } else {
+              // Provide more context in the error message
+              const errorDetails = stderr || stdout || 'Unknown error'
+              const truncatedError = errorDetails.length > 500 
+                ? errorDetails.slice(-500) 
+                : errorDetails
+              resolve({ 
+                success: false, 
+                message: 'Homebrew installation failed. You may need to install it manually from https://brew.sh',
+                error: truncatedError
+              })
+            }
           }
         })
 
         child.on('error', (error) => {
+          console.error('[Homebrew Install] Spawn error:', error)
           resolve({ 
             success: false, 
             message: 'Failed to start Homebrew installation',
@@ -135,6 +172,7 @@ export class Installer {
         })
       })
     } catch (error) {
+      console.error('[Homebrew Install] Exception:', error)
       return { 
         success: false, 
         message: 'Failed to install Homebrew',

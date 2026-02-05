@@ -13,6 +13,7 @@ interface DependencyStatus {
 interface InstallError {
   id: string
   message: string
+  details?: string
 }
 
 interface DesktopAppError {
@@ -144,8 +145,8 @@ export const useSetupStore = create<SetupState>((set, get) => ({
         await get().checkDependencies()
         return true
       }
-      // Capture the error message for display
-      set({ installError: { id, message: result.message } })
+      // Capture the error message and details for display
+      set({ installError: { id, message: result.message, details: result.error } })
       return false
     } catch (error) {
       console.error('Failed to install dependency:', error)

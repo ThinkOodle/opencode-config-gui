@@ -115,7 +115,12 @@ export function DependenciesStep() {
       {/* Error message */}
       {installError && (
         <Alert variant="error" title="Installation failed" className="mb-4">
-          {installError.message}
+          <p>{installError.message}</p>
+          {installError.details && (
+            <pre className="mt-2 text-xs bg-zinc-900 p-2 rounded overflow-x-auto max-h-32 overflow-y-auto">
+              {installError.details}
+            </pre>
+          )}
         </Alert>
       )}
 
