@@ -5,7 +5,8 @@ import type { OpenCodeConfig, McpServerConfig } from '../main/services/config-ma
 import type { ProviderTestResult } from '../main/services/env-manager'
 import type { Skill, SkillInstallResult, RepoInstallResult } from '../main/services/skills-manager'
 import type { InstalledMcp, McpInstallResult, McpConnectionResult } from '../main/services/mcp-manager'
-import type { AgencySkill, AgencyMcpServer } from '../main/services/agency-catalog'
+import type { AgencySkill, AgencyMcpServer, AgencyAgent } from '../main/services/agency-catalog'
+import type { Agent, AgentInstallResult, AgentValidationError } from '../main/services/agents-manager'
 
 // Define the API interface
 export interface OodleAPI {
@@ -52,6 +53,15 @@ export interface OodleAPI {
   toggleMcpEnabled: (serverId: string, enabled: boolean) => Promise<void>
   testMcpConnection: (serverId: string) => Promise<McpConnectionResult>
   fetchMcpCatalog: () => Promise<AgencyMcpServer[]>
+  
+  // Agents
+  installAgentFromCatalog: (agentId: string) => Promise<AgentInstallResult>
+  saveAgent: (name: string, content: string) => Promise<AgentInstallResult>
+  listInstalledAgents: () => Promise<Agent[]>
+  getAgentContent: (name: string) => Promise<string | null>
+  removeAgent: (name: string) => Promise<void>
+  fetchAgentsCatalog: () => Promise<AgencyAgent[]>
+  validateAgent: (content: string) => Promise<AgentValidationError[]>
   
   // Updater events
   onUpdaterStatus: (callback: (status: { status: string; data?: unknown }) => void) => () => void
@@ -102,6 +112,15 @@ const api: OodleAPI = {
   toggleMcpEnabled: (serverId, enabled) => ipcRenderer.invoke('mcp:toggleEnabled', serverId, enabled),
   testMcpConnection: (serverId) => ipcRenderer.invoke('mcp:testConnection', serverId),
   fetchMcpCatalog: () => ipcRenderer.invoke('mcp:fetchCatalog'),
+  
+  // Agents
+  installAgentFromCatalog: (agentId) => ipcRenderer.invoke('agents:installFromCatalog', agentId),
+  saveAgent: (name, content) => ipcRenderer.invoke('agents:save', name, content),
+  listInstalledAgents: () => ipcRenderer.invoke('agents:list'),
+  getAgentContent: (name) => ipcRenderer.invoke('agents:getContent', name),
+  removeAgent: (name) => ipcRenderer.invoke('agents:remove', name),
+  fetchAgentsCatalog: () => ipcRenderer.invoke('agents:fetchCatalog'),
+  validateAgent: (content) => ipcRenderer.invoke('agents:validate', content),
   
   // Updater events
   onUpdaterStatus: (callback) => {

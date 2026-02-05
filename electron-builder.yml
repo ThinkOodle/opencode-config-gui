@@ -1,4 +1,4 @@
-appId: com.agency.oodle-ai
+appId: com.thinkoodle.opencode-config-gui
 productName: Oodle AI
 directories:
   buildResources: resources
@@ -23,11 +23,12 @@ asarUnpack:
   - resources/**
 mac:
   icon: resources/icon.icns
+  entitlements: resources/entitlements.mac.parent.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: This app does not use the camera.
     - NSMicrophoneUsageDescription: This app does not use the microphone.
-  notarize: false
+  notarize: true
   target:
     - target: dmg
       arch:
@@ -48,6 +49,5 @@ dmg:
       path: /Applications
 publish:
   provider: github
-  owner: your-agency
-  repo: oodle-ai
-  private: true
+  owner: ThinkOodle
+  repo: opencode-config-gui

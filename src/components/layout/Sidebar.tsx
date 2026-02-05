@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { 
   LayoutDashboard, 
   Sparkles, 
+  Bot,
   Plug, 
   FileCode, 
   Settings
@@ -11,6 +12,7 @@ import oodleLogo from '@/assets/oodle-logo.svg'
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/skills', label: 'Skills', icon: Sparkles },
+  { path: '/agents', label: 'Agents', icon: Bot },
   { path: '/mcp', label: 'Add-ons', icon: Plug },
   { path: '/config', label: 'Configuration', icon: FileCode },
   { path: '/settings', label: 'Settings', icon: Settings },

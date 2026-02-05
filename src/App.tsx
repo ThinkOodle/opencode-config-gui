@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Shell } from './components/layout/Shell'
 import { Dashboard } from './pages/Dashboard'
 import { Skills } from './pages/Skills'
+import { Agents } from './pages/Agents'
 import { Mcp } from './pages/Mcp'
 import { Config } from './pages/Config'
 import { Settings } from './pages/Settings'
@@ -42,6 +43,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/skills" element={<Skills />} />
+          <Route path="/agents" element={<Agents />} />
           <Route path="/mcp" element={<Mcp />} />
           <Route path="/config" element={<Config />} />
           <Route path="/settings" element={<Settings />} />

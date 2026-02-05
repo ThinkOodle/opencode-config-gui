@@ -5,6 +5,7 @@ import { initAutoUpdater } from './updater'
 import { registerDependencyHandlers } from './ipc/dependencies'
 import { registerConfigHandlers } from './ipc/config'
 import { registerSkillsHandlers } from './ipc/skills'
+import { registerAgentsHandlers } from './ipc/agents'
 import { registerMcpHandlers } from './ipc/mcp'
 
 let mainWindow: BrowserWindow | null = null
@@ -61,6 +62,7 @@ app.whenReady().then(() => {
   registerDependencyHandlers()
   registerConfigHandlers()
   registerSkillsHandlers()
+  registerAgentsHandlers()
   registerMcpHandlers()
 
   // Initialize auto-updater (only in production)
