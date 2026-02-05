@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useSetupStore } from '@/stores/setup-store'
 import { Button, Card, Input, Alert } from '@/components/common'
-import { ArrowRight, ArrowLeft, ExternalLink, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Loader2, Rocket } from 'lucide-react'
 
 export function ProviderStep() {
   const { 
     isTestingProvider,
-    providerConfigured,
     testAndSaveProvider,
-    nextStep,
+    setSetupComplete,
     prevStep
   } = useSetupStore()
 
@@ -46,11 +45,17 @@ export function ProviderStep() {
     
     if (result) {
       setSuccess(true)
-      // Auto-advance after a short delay
-      setTimeout(() => nextStep(), 1500)
     } else {
       setError('Invalid API key format. Please check that it starts with sk- and try again.')
     }
+  }
+
+  const handleComplete = () => {
+    setSetupComplete(true)
+  }
+
+  const handleSkip = () => {
+    setSetupComplete(true)
   }
 
   const handleOpenDocs = () => {
@@ -78,7 +83,7 @@ export function ProviderStep() {
         <p className="text-zinc-400">
           {alreadyConfigured 
             ? 'OpenCode Zen is already configured and ready to use.'
-            : 'Enter your OpenCode Zen API key to enable AI features.'}
+            : 'Enter your OpenCode Zen API key to enable AI features. You can also skip this and configure it later in Settings.'}
         </p>
       </div>
 
@@ -86,6 +91,10 @@ export function ProviderStep() {
       {alreadyConfigured ? (
         <Alert variant="success" title="OpenCode Zen Connected">
           Your API key is configured. You're ready to use OpenCode!
+        </Alert>
+      ) : success ? (
+        <Alert variant="success" title="Connected successfully">
+          Your API key has been saved. You're ready to use OpenCode!
         </Alert>
       ) : (
         <>
@@ -109,7 +118,6 @@ export function ProviderStep() {
                 onChange={(e) => {
                   setApiKey(e.target.value)
                   setError(null)
-                  setSuccess(false)
                 }}
                 error={error || undefined}
               />
@@ -120,10 +128,10 @@ export function ProviderStep() {
             </div>
           </Card>
 
-          {/* Success message */}
-          {success && (
-            <Alert variant="success" title="Connected successfully">
-              Your API key has been saved. You're ready to use OpenCode!
+          {/* Error message */}
+          {error && (
+            <Alert variant="error" title="Connection failed" className="mb-6">
+              {error}
             </Alert>
           )}
         </>
@@ -137,18 +145,26 @@ export function ProviderStep() {
         </Button>
         
         {success || alreadyConfigured ? (
-          <Button onClick={nextStep}>
-            Continue
-            <ArrowRight className="w-5 h-5" />
+          <Button onClick={handleComplete}>
+            <Rocket className="w-5 h-5" />
+            Open Dashboard
           </Button>
         ) : (
-          <Button 
-            onClick={handleTest}
-            disabled={!apiKey || isTestingProvider}
-            isLoading={isTestingProvider}
-          >
-            Test Connection
-          </Button>
+          <div className="flex gap-3">
+            <Button 
+              variant="ghost"
+              onClick={handleSkip}
+            >
+              Skip for now
+            </Button>
+            <Button 
+              onClick={handleTest}
+              disabled={!apiKey || isTestingProvider}
+              isLoading={isTestingProvider}
+            >
+              Save & Continue
+            </Button>
+          </div>
         )}
       </div>
     </div>

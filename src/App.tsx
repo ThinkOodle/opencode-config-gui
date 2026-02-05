@@ -36,12 +36,18 @@ function NavigationListener() {
 }
 
 export default function App() {
-  const { isSetupComplete, checkSetupStatus } = useSetupStore()
+  const { isSetupComplete, checkSetupStatus, setSetupComplete } = useSetupStore()
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    checkSetupStatus().finally(() => setIsLoading(false))
-  }, [checkSetupStatus])
+    checkSetupStatus().then(() => {
+      // In dev mode, reset setup to incomplete so the wizard can be tested
+      // The user can still complete it by clicking through
+      if (import.meta.env.DEV) {
+        setSetupComplete(false)
+      }
+    }).finally(() => setIsLoading(false))
+  }, [checkSetupStatus, setSetupComplete])
 
   if (isLoading) {
     return (

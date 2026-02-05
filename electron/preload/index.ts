@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DependencyStatus } from '../main/services/dependency-checker'
-import type { InstallResult } from '../main/services/installer'
+import type { DesktopAppStatus } from '../main/services/dependency-checker'
 import type { OpenCodeConfig, McpServerConfig } from '../main/services/config-manager'
 import type { ProviderTestResult } from '../main/services/env-manager'
 import type { Skill, SkillInstallResult, RepoInstallResult } from '../main/services/skills-manager'
@@ -14,15 +13,8 @@ export interface OodleAPI {
   getVersion: () => Promise<string>
   openExternal: (url: string) => Promise<boolean>
   
-  // Dependencies
-  checkDependencies: () => Promise<DependencyStatus[]>
-  checkDependency: (id: string) => Promise<DependencyStatus>
-  installDependency: (id: string) => Promise<InstallResult>
-  installAllDependencies: () => Promise<InstallResult>
-  
   // Desktop app
-  checkDesktopApp: () => Promise<{ installed: boolean; version?: string }>
-  installDesktopApp: () => Promise<InstallResult>
+  checkDesktopApp: () => Promise<DesktopAppStatus>
   
   // Config
   readGlobalConfig: () => Promise<OpenCodeConfig>
@@ -79,15 +71,8 @@ const api: OodleAPI = {
   getVersion: () => ipcRenderer.invoke('app:version'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   
-  // Dependencies
-  checkDependencies: () => ipcRenderer.invoke('dependencies:check'),
-  checkDependency: (id) => ipcRenderer.invoke('dependencies:checkOne', id),
-  installDependency: (id) => ipcRenderer.invoke('dependencies:install', id),
-  installAllDependencies: () => ipcRenderer.invoke('dependencies:installAll'),
-  
   // Desktop app
   checkDesktopApp: () => ipcRenderer.invoke('dependencies:checkDesktopApp'),
-  installDesktopApp: () => ipcRenderer.invoke('dependencies:installDesktopApp'),
   
   // Config
   readGlobalConfig: () => ipcRenderer.invoke('config:readGlobal'),

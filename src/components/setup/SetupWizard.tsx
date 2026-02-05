@@ -1,17 +1,13 @@
 import { useSetupStore } from '@/stores/setup-store'
 import { WelcomeStep } from './WelcomeStep'
-import { DependenciesStep } from './DependenciesStep'
 import { DesktopAppStep } from './DesktopAppStep'
 import { ProviderStep } from './ProviderStep'
-import { CompleteStep } from './CompleteStep'
 import oodleLogo from '@/assets/oodle-logo.svg'
 
 const steps = [
   { id: 'welcome', label: 'Welcome' },
-  { id: 'dependencies', label: 'Dependencies' },
   { id: 'desktop', label: 'Desktop App' },
-  { id: 'provider', label: 'Provider' },
-  { id: 'complete', label: 'Complete' },
+  { id: 'provider', label: 'API Key' },
 ]
 
 export function SetupWizard() {
@@ -64,10 +60,8 @@ export function SetupWizard() {
       {/* Step content */}
       <main className="flex-1 overflow-auto">
         {currentStep === 0 && <WelcomeStep />}
-        {currentStep === 1 && <DependenciesStep />}
-        {currentStep === 2 && <DesktopAppStep />}
-        {currentStep === 3 && <ProviderStep />}
-        {currentStep === 4 && <CompleteStep />}
+        {currentStep === 1 && <DesktopAppStep />}
+        {currentStep === 2 && <ProviderStep />}
       </main>
     </div>
   )

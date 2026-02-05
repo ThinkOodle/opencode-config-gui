@@ -1,26 +1,5 @@
 import { create } from 'zustand'
 
-interface DependencyStatus {
-  id: string
-  name: string
-  description: string
-  installed: boolean
-  version?: string
-  required: boolean
-  order: number
-}
-
-interface InstallError {
-  id: string
-  message: string
-  details?: string
-}
-
-interface DesktopAppError {
-  message: string
-  details?: string
-}
-
 interface SetupState {
   // Setup completion status
   isSetupComplete: boolean
@@ -28,21 +7,12 @@ interface SetupState {
   // Current wizard step
   currentStep: number
   
-  // Dependencies
-  dependencies: DependencyStatus[]
-  isCheckingDependencies: boolean
-  isInstallingDependency: string | null
-  isWaitingForXcodeCLT: boolean
-  installError: InstallError | null
-  
   // Desktop app
   desktopAppInstalled: boolean
+  desktopAppVersion: string | undefined
   isCheckingDesktopApp: boolean
-  isInstallingDesktopApp: boolean
-  desktopAppError: DesktopAppError | null
   
   // Provider configuration
-  selectedProvider: string | null
   isTestingProvider: boolean
   providerConfigured: boolean
   
@@ -53,20 +23,10 @@ interface SetupState {
   nextStep: () => void
   prevStep: () => void
   
-  // Dependency actions
-  checkDependencies: () => Promise<void>
-  installDependency: (id: string) => Promise<boolean>
-  installAllDependencies: () => Promise<boolean>
-  clearInstallError: () => void
-  setWaitingForXcodeCLT: (waiting: boolean) => void
-  
   // Desktop app actions
   checkDesktopApp: () => Promise<void>
-  installDesktopApp: () => Promise<boolean>
-  clearDesktopAppError: () => void
   
   // Provider actions
-  setSelectedProvider: (provider: string) => void
   testAndSaveProvider: (provider: string, apiKey: string) => Promise<boolean>
   setProviderConfigured: (configured: boolean) => void
 }
@@ -74,36 +34,30 @@ interface SetupState {
 export const useSetupStore = create<SetupState>((set, get) => ({
   isSetupComplete: false,
   currentStep: 0,
-  dependencies: [],
-  isCheckingDependencies: false,
-  isInstallingDependency: null,
-  isWaitingForXcodeCLT: false,
-  installError: null,
   desktopAppInstalled: false,
+  desktopAppVersion: undefined,
   isCheckingDesktopApp: false,
-  isInstallingDesktopApp: false,
-  desktopAppError: null,
-  selectedProvider: null,
   isTestingProvider: false,
   providerConfigured: false,
 
   checkSetupStatus: async () => {
     try {
-      // Check if all dependencies are installed
-      const deps = await window.api.checkDependencies()
-      const allInstalled = deps.every(d => d.installed)
-      console.log('[SetupStore] Dependencies check:', { allInstalled, count: deps.length })
+      // Check if OpenCode Desktop is installed
+      const desktopStatus = await window.api.checkDesktopApp()
+      console.log('[SetupStore] Desktop app status:', desktopStatus)
       
-      // Check if OpenCode Zen is configured via auth.json
-      const authStatus = await window.api.checkOpenCodeAuth()
-      console.log('[SetupStore] Auth status:', authStatus)
-      
-      const isComplete = allInstalled && authStatus.configured
+      // Setup is complete if desktop app is installed
+      // API key is optional
+      const isComplete = desktopStatus.installed
       console.log('[SetupStore] Setup complete:', isComplete)
+      
+      // Also check auth status for UI purposes
+      const authStatus = await window.api.checkOpenCodeAuth()
       
       set({ 
         isSetupComplete: isComplete,
-        dependencies: deps,
+        desktopAppInstalled: desktopStatus.installed,
+        desktopAppVersion: desktopStatus.version,
         providerConfigured: authStatus.configured
       })
     } catch (error) {
@@ -120,105 +74,20 @@ export const useSetupStore = create<SetupState>((set, get) => ({
   
   prevStep: () => set((state) => ({ currentStep: Math.max(0, state.currentStep - 1) })),
 
-  checkDependencies: async () => {
-    set({ isCheckingDependencies: true })
-    try {
-      const deps = await window.api.checkDependencies()
-      set({ dependencies: deps })
-    } catch (error) {
-      console.error('Failed to check dependencies:', error)
-    } finally {
-      set({ isCheckingDependencies: false })
-    }
-  },
-
-  installDependency: async (id) => {
-    set({ isInstallingDependency: id, installError: null })
-    try {
-      const result = await window.api.installDependency(id)
-      if (result.success) {
-        // For Xcode CLT, mark that we're waiting for user to complete the dialog
-        if (id === 'xcode-clt') {
-          set({ isWaitingForXcodeCLT: true })
-        }
-        // Refresh dependency status
-        await get().checkDependencies()
-        return true
-      }
-      // Capture the error message and details for display
-      set({ installError: { id, message: result.message, details: result.error } })
-      return false
-    } catch (error) {
-      console.error('Failed to install dependency:', error)
-      set({ installError: { id, message: 'An unexpected error occurred' } })
-      return false
-    } finally {
-      set({ isInstallingDependency: null })
-    }
-  },
-
-  installAllDependencies: async () => {
-    const { dependencies } = get()
-    const toInstall = dependencies.filter(d => !d.installed).sort((a, b) => a.order - b.order)
-    
-    for (const dep of toInstall) {
-      const success = await get().installDependency(dep.id)
-      if (!success) {
-        return false
-      }
-    }
-    
-    return true
-  },
-
-  clearInstallError: () => set({ installError: null }),
-
-  setWaitingForXcodeCLT: (waiting) => set({ isWaitingForXcodeCLT: waiting }),
-
   checkDesktopApp: async () => {
-    set({ isCheckingDesktopApp: true, desktopAppError: null })
+    set({ isCheckingDesktopApp: true })
     try {
       const result = await window.api.checkDesktopApp()
-      set({ desktopAppInstalled: result.installed })
+      set({ 
+        desktopAppInstalled: result.installed,
+        desktopAppVersion: result.version
+      })
     } catch (error) {
       console.error('Failed to check desktop app:', error)
     } finally {
       set({ isCheckingDesktopApp: false })
     }
   },
-
-  installDesktopApp: async () => {
-    set({ isInstallingDesktopApp: true, desktopAppError: null })
-    try {
-      const result = await window.api.installDesktopApp()
-      if (result.success) {
-        set({ desktopAppInstalled: true })
-        return true
-      }
-      set({ 
-        desktopAppError: { 
-          message: result.message, 
-          details: result.error 
-        } 
-      })
-      return false
-    } catch (error) {
-      console.error('Failed to install desktop app:', error)
-      set({ 
-        desktopAppError: { 
-          message: 'An unexpected error occurred',
-          details: error instanceof Error ? error.message : String(error)
-        } 
-      })
-      return false
-    } finally {
-      set({ isInstallingDesktopApp: false })
-    }
-  },
-
-  clearDesktopAppError: () => set({ desktopAppError: null }),
-
-  setSelectedProvider: (provider) => set({ selectedProvider: provider }),
 
   testAndSaveProvider: async (provider, apiKey) => {
     set({ isTestingProvider: true })

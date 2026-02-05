@@ -8,10 +8,7 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([
-      window.api.getVersion(),
-      window.api.checkDependencies()
-    ]).then(([ver]) => {
+    window.api.getVersion().then((ver) => {
       setVersion(ver)
     }).finally(() => {
       setIsLoading(false)

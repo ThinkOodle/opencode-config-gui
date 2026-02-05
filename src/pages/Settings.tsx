@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, Button, Input, Alert, StatusBadge, Progress } from '@/components/common'
-import { Key, RefreshCw, ExternalLink, Loader2, Monitor, Download, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { Key, RefreshCw, ExternalLink, Loader2, Monitor, RotateCcw, CheckCircle2 } from 'lucide-react'
+
+const DOWNLOAD_URL = 'https://opencode.ai/download'
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
@@ -28,9 +30,6 @@ export function Settings() {
   const [desktopAppInstalled, setDesktopAppInstalled] = useState(false)
   const [desktopAppVersion, setDesktopAppVersion] = useState<string | undefined>()
   const [isCheckingDesktopApp, setIsCheckingDesktopApp] = useState(false)
-  const [isInstallingDesktopApp, setIsInstallingDesktopApp] = useState(false)
-  const [desktopAppError, setDesktopAppError] = useState<{ message: string; details?: string } | null>(null)
-  const [showErrorDetails, setShowErrorDetails] = useState(false)
 
   // Update state
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
@@ -106,29 +105,8 @@ export function Settings() {
     }
   }
 
-  const handleInstallDesktopApp = async () => {
-    setIsInstallingDesktopApp(true)
-    setDesktopAppError(null)
-    setShowErrorDetails(false)
-    try {
-      const result = await window.api.installDesktopApp()
-      if (result.success) {
-        setDesktopAppInstalled(true)
-        // Refresh to get version
-        const status = await window.api.checkDesktopApp()
-        setDesktopAppVersion(status.version)
-      } else {
-        setDesktopAppError({ message: result.message, details: result.error })
-      }
-    } catch (error) {
-      console.error('Failed to install desktop app:', error)
-      setDesktopAppError({ 
-        message: 'An unexpected error occurred',
-        details: error instanceof Error ? error.message : String(error)
-      })
-    } finally {
-      setIsInstallingDesktopApp(false)
-    }
+  const handleDownloadDesktopApp = () => {
+    window.api.openExternal(DOWNLOAD_URL)
   }
 
   const handleRefreshDesktopApp = async () => {
@@ -137,9 +115,6 @@ export function Settings() {
       const status = await window.api.checkDesktopApp()
       setDesktopAppInstalled(status.installed)
       setDesktopAppVersion(status.version)
-      if (status.installed) {
-        setDesktopAppError(null)
-      }
     } finally {
       setIsCheckingDesktopApp(false)
     }
@@ -285,7 +260,7 @@ export function Settings() {
               variant="ghost"
               size="sm"
               onClick={handleRefreshDesktopApp}
-              disabled={isCheckingDesktopApp || isInstallingDesktopApp}
+              disabled={isCheckingDesktopApp}
             >
               <RefreshCw className={`w-4 h-4 ${isCheckingDesktopApp ? 'animate-spin' : ''}`} />
             </Button>
@@ -308,38 +283,20 @@ export function Settings() {
             ) : desktopAppInstalled ? (
               <StatusBadge status="success" label="Installed" size="sm" />
             ) : (
-              <Button 
-                size="sm"
-                onClick={handleInstallDesktopApp}
-                disabled={isInstallingDesktopApp}
-                isLoading={isInstallingDesktopApp}
-              >
-                <Download className="w-4 h-4" />
-                Install
-              </Button>
+              <div className="flex items-center gap-2">
+                <StatusBadge status="error" label="Not installed" size="sm" />
+                <Button 
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleDownloadDesktopApp}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Download
+                </Button>
+              </div>
             )}
           </div>
         </div>
-        
-        {desktopAppError && (
-          <Alert variant="error" title="Installation failed" className="mt-4">
-            <p>{desktopAppError.message}</p>
-            {desktopAppError.details && (
-              <details 
-                className="mt-2" 
-                open={showErrorDetails}
-                onToggle={(e) => setShowErrorDetails((e.target as HTMLDetailsElement).open)}
-              >
-                <summary className="cursor-pointer text-sm text-zinc-400 hover:text-zinc-300">
-                  View Details
-                </summary>
-                <pre className="mt-2 p-2 bg-zinc-900 rounded text-xs text-zinc-400 overflow-x-auto max-h-32">
-                  {desktopAppError.details}
-                </pre>
-              </details>
-            )}
-          </Alert>
-        )}
       </Card>
 
       {/* Updates */}

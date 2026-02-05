@@ -31,7 +31,7 @@ export function WelcomeStep() {
         </h1>
         <p className="text-lg text-zinc-400">
           The easiest way to configure OpenCode on your Mac.
-          Let's get you set up in just a few minutes.
+          Let's make sure you're all set up.
         </p>
       </div>
 
