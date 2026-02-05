@@ -91,7 +91,7 @@ export class Installer {
       }
 
       // First, download the install script
-      const downloadResult = await execAsync(
+      await execAsync(
         'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/homebrew-install.sh',
         { timeout: 30000 }
       )
@@ -99,78 +99,52 @@ export class Installer {
       // Make it executable
       await execAsync('chmod +x /tmp/homebrew-install.sh')
 
-      // Run the install script with proper environment
-      // CI=1 is more reliable than NONINTERACTIVE for the Homebrew installer
-      return new Promise((resolve) => {
-        const child = spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
-          env: {
-            ...process.env,
-            CI: '1',                    // Tells Homebrew to run non-interactively
-            NONINTERACTIVE: '1',        // Backup flag
-            HOMEBREW_NO_ANALYTICS: '1'  // Disable analytics during install
-          },
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-
-        let stdout = ''
-        let stderr = ''
-
-        child.stdout?.on('data', (data) => {
-          const text = data.toString()
-          stdout += text
-          console.log('[Homebrew Install]', text)
-        })
-
-        child.stderr?.on('data', (data) => {
-          const text = data.toString()
-          stderr += text
-          console.error('[Homebrew Install Error]', text)
-        })
-
-        child.on('close', async (code) => {
-          console.log('[Homebrew Install] Process exited with code:', code)
-          
-          // Clean up the temp script
-          try {
-            await execAsync('rm -f /tmp/homebrew-install.sh')
-          } catch {
-            // Ignore cleanup errors
+      // Homebrew installation requires sudo on BOTH Intel and Apple Silicon:
+      // - Intel: needs sudo for /usr/local
+      // - Apple Silicon: needs sudo to create /opt/homebrew and set permissions
+      // Use osascript to run with administrator privileges (will prompt for password)
+      try {
+        await execAsync(
+          `osascript -e 'do shell script "CI=1 NONINTERACTIVE=1 HOMEBREW_NO_ANALYTICS=1 /bin/bash /tmp/homebrew-install.sh" with administrator privileges'`,
+          { timeout: 600000 }  // 10 minute timeout for full install
+        )
+        
+        // Clean up
+        await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
+        
+        // Verify installation
+        const recheckStatus = await this.checker.check('homebrew')
+        if (recheckStatus.installed) {
+          await this.configureHomebrewPath()
+          return { success: true, message: 'Homebrew installed successfully' }
+        } else {
+          return {
+            success: false,
+            message: 'Homebrew installation completed but verification failed',
+            error: 'Could not find Homebrew after installation. Try running: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" in Terminal.'
           }
-
-          if (code === 0) {
-            // Configure PATH
-            await this.configureHomebrewPath()
-            resolve({ success: true, message: 'Homebrew installed successfully' })
-          } else {
-            // Check if Homebrew was actually installed despite non-zero exit
-            const recheckStatus = await this.checker.check('homebrew')
-            if (recheckStatus.installed) {
-              await this.configureHomebrewPath()
-              resolve({ success: true, message: 'Homebrew installed successfully' })
-            } else {
-              // Provide more context in the error message
-              const errorDetails = stderr || stdout || 'Unknown error'
-              const truncatedError = errorDetails.length > 500 
-                ? errorDetails.slice(-500) 
-                : errorDetails
-              resolve({ 
-                success: false, 
-                message: 'Homebrew installation failed. You may need to install it manually from https://brew.sh',
-                error: truncatedError
-              })
-            }
+        }
+      } catch (error) {
+        // Clean up
+        await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
+        
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        
+        // Check if user cancelled the password dialog
+        if (errorMessage.includes('User canceled') || errorMessage.includes('-128')) {
+          return {
+            success: false,
+            message: 'Administrator access is required to install Homebrew',
+            error: 'You cancelled the password prompt. Please try again and enter your password when prompted.'
           }
-        })
-
-        child.on('error', (error) => {
-          console.error('[Homebrew Install] Spawn error:', error)
-          resolve({ 
-            success: false, 
-            message: 'Failed to start Homebrew installation',
-            error: error.message
-          })
-        })
-      })
+        }
+        
+        return {
+          success: false,
+          message: 'Homebrew installation failed',
+          error: errorMessage
+        }
+      }
     } catch (error) {
       console.error('[Homebrew Install] Exception:', error)
       return { 
