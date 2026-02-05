@@ -8,11 +8,13 @@ export function DependenciesStep() {
     dependencies, 
     isCheckingDependencies,
     isInstallingDependency,
+    isWaitingForXcodeCLT,
     installError,
     checkDependencies,
     installDependency,
     installAllDependencies,
     clearInstallError,
+    setWaitingForXcodeCLT,
     nextStep,
     prevStep
   } = useSetupStore()
@@ -20,6 +22,23 @@ export function DependenciesStep() {
   useEffect(() => {
     checkDependencies()
   }, [checkDependencies])
+
+  // Poll for Xcode CLT installation completion
+  useEffect(() => {
+    if (!isWaitingForXcodeCLT) return
+
+    const pollInterval = setInterval(async () => {
+      await checkDependencies()
+
+      // Check if xcode-clt is now installed
+      const xcodeDep = useSetupStore.getState().dependencies.find(d => d.id === 'xcode-clt')
+      if (xcodeDep?.installed) {
+        setWaitingForXcodeCLT(false)
+      }
+    }, 3000)  // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [isWaitingForXcodeCLT, checkDependencies, setWaitingForXcodeCLT])
 
   const allInstalled = dependencies.every(d => d.installed)
   const notInstalled = dependencies.filter(d => !d.installed)
@@ -111,11 +130,11 @@ export function DependenciesStep() {
         </Alert>
       )}
 
-      {/* Xcode CLT special note */}
-      {isInstallingDependency === 'xcode-clt' && (
+      {/* Xcode CLT special note - show while installing OR waiting for completion */}
+      {(isInstallingDependency === 'xcode-clt' || isWaitingForXcodeCLT) && (
         <Alert variant="warning" title="System dialog required" className="mt-4">
-          A system dialog will appear asking you to install Xcode Command Line Tools.
-          Please click "Install" in that dialog to continue.
+          A system dialog should appear asking you to install Xcode Command Line Tools.
+          Please click "Install" in that dialog. This page will automatically update when installation completes.
         </Alert>
       )}
 

@@ -159,9 +159,16 @@ export class DependencyChecker {
   }
 
   private async checkOpenCode(): Promise<string | undefined> {
-    // Check explicit Homebrew paths first (Apple Silicon, then Intel)
+    const { homedir } = await import('os')
+    const { join } = await import('path')
+
+    // Check explicit paths: Homebrew (Apple Silicon, Intel) and manual install
     // Electron apps launched from Finder don't inherit shell PATH
-    const paths = ['/opt/homebrew/bin/opencode', '/usr/local/bin/opencode']
+    const paths = [
+      '/opt/homebrew/bin/opencode',                     // Homebrew Apple Silicon
+      '/usr/local/bin/opencode',                        // Homebrew Intel
+      join(homedir(), '.opencode', 'bin', 'opencode')   // Manual install
+    ]
 
     for (const ocPath of paths) {
       try {
@@ -172,7 +179,19 @@ export class DependencyChecker {
       }
     }
 
-    // Fallback to PATH (for custom installations)
+    // Try 'which' to find in PATH (may work in some contexts)
+    try {
+      const { stdout: whichOutput } = await execAsync('which opencode')
+      const ocPath = whichOutput.trim()
+      if (ocPath) {
+        const { stdout } = await execAsync(`${ocPath} --version`)
+        return stdout.trim()
+      }
+    } catch {
+      // which failed or opencode not in PATH
+    }
+
+    // Final fallback: try direct execution (in case it's in system PATH)
     try {
       const { stdout } = await execAsync('opencode --version')
       return stdout.trim()

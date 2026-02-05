@@ -31,6 +31,7 @@ interface SetupState {
   dependencies: DependencyStatus[]
   isCheckingDependencies: boolean
   isInstallingDependency: string | null
+  isWaitingForXcodeCLT: boolean
   installError: InstallError | null
   
   // Desktop app
@@ -56,6 +57,7 @@ interface SetupState {
   installDependency: (id: string) => Promise<boolean>
   installAllDependencies: () => Promise<boolean>
   clearInstallError: () => void
+  setWaitingForXcodeCLT: (waiting: boolean) => void
   
   // Desktop app actions
   checkDesktopApp: () => Promise<void>
@@ -74,6 +76,7 @@ export const useSetupStore = create<SetupState>((set, get) => ({
   dependencies: [],
   isCheckingDependencies: false,
   isInstallingDependency: null,
+  isWaitingForXcodeCLT: false,
   installError: null,
   desktopAppInstalled: false,
   isCheckingDesktopApp: false,
@@ -133,6 +136,10 @@ export const useSetupStore = create<SetupState>((set, get) => ({
     try {
       const result = await window.api.installDependency(id)
       if (result.success) {
+        // For Xcode CLT, mark that we're waiting for user to complete the dialog
+        if (id === 'xcode-clt') {
+          set({ isWaitingForXcodeCLT: true })
+        }
         // Refresh dependency status
         await get().checkDependencies()
         return true
@@ -164,6 +171,8 @@ export const useSetupStore = create<SetupState>((set, get) => ({
   },
 
   clearInstallError: () => set({ installError: null }),
+
+  setWaitingForXcodeCLT: (waiting) => set({ isWaitingForXcodeCLT: waiting }),
 
   checkDesktopApp: async () => {
     set({ isCheckingDesktopApp: true, desktopAppError: null })

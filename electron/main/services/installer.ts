@@ -56,18 +56,19 @@ export class Installer {
         return { success: true, message: 'Xcode Command Line Tools already installed' }
       }
 
-      // Trigger the system install dialog
-      // This opens a GUI dialog that the user must interact with
-      await execAsync('xcode-select --install')
+      // Use osascript to trigger the install dialog
+      // This is more reliable than direct execution for GUI dialogs on macOS,
+      // especially on Intel Macs where the dialog can flash and disappear
+      await execAsync('osascript -e \'do shell script "xcode-select --install"\'')
 
       // Note: The actual installation happens asynchronously via the system dialog
-      // We return success here but the UI should poll for completion
+      // We return success here but the UI will poll for completion
       return { 
         success: true, 
         message: 'Xcode Command Line Tools installation started. Please complete the installation in the system dialog.' 
       }
     } catch (error) {
-      // Error code 1 means already installed, which is fine
+      // xcode-select --install returns error code 1 if already installed
       const status = await this.checker.check('xcode-clt')
       if (status.installed) {
         return { success: true, message: 'Xcode Command Line Tools already installed' }
@@ -148,8 +149,22 @@ export class Installer {
     const { join } = await import('path')
 
     const zshrcPath = join(homedir(), '.zshrc')
-    const brewPath = '/opt/homebrew/bin'
-    const pathExport = `\n# Homebrew\neval "$(/opt/homebrew/bin/brew shellenv)"\n`
+
+    // Detect which Homebrew path exists (Apple Silicon vs Intel)
+    let brewBinary: string | null = null
+    for (const path of ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']) {
+      try {
+        await access(path)
+        brewBinary = path
+        break
+      } catch {
+        continue
+      }
+    }
+
+    if (!brewBinary) return  // Homebrew not found, skip configuration
+
+    const pathExport = `\n# Homebrew\neval "$(${brewBinary} shellenv)"\n`
 
     try {
       // Check if .zshrc exists
@@ -161,9 +176,9 @@ export class Installer {
       }
 
       const content = await readFile(zshrcPath, 'utf-8')
-      
-      // Check if Homebrew path is already configured
-      if (content.includes('/opt/homebrew') || content.includes(brewPath)) {
+
+      // Check if any Homebrew path is already configured
+      if (content.includes('/opt/homebrew') || content.includes('/usr/local/bin/brew')) {
         return
       }
 
