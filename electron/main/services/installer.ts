@@ -102,36 +102,22 @@ export class Installer {
       // Homebrew installation requires sudo on BOTH Intel and Apple Silicon:
       // - Intel: needs sudo for /usr/local
       // - Apple Silicon: needs sudo to create /opt/homebrew and set permissions
-      // Use osascript to run with administrator privileges (will prompt for password)
+      //
+      // The Homebrew installer handles sudo internally and will refuse to run as root.
+      // We use osascript to pre-authenticate and cache sudo credentials, then run
+      // the installer as the normal user. The installer will use the cached credentials.
       try {
+        // Prompt for password and cache sudo credentials (valid for ~5 minutes)
         await execAsync(
-          `osascript -e 'do shell script "CI=1 NONINTERACTIVE=1 HOMEBREW_NO_ANALYTICS=1 /bin/bash /tmp/homebrew-install.sh" with administrator privileges'`,
-          { timeout: 600000 }  // 10 minute timeout for full install
+          `osascript -e 'do shell script "sudo -v" with administrator privileges'`,
+          { timeout: 60000 }
         )
-        
-        // Clean up
-        await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
-        
-        // Verify installation
-        const recheckStatus = await this.checker.check('homebrew')
-        if (recheckStatus.installed) {
-          await this.configureHomebrewPath()
-          return { success: true, message: 'Homebrew installed successfully' }
-        } else {
-          return {
-            success: false,
-            message: 'Homebrew installation completed but verification failed',
-            error: 'Could not find Homebrew after installation. Try running: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" in Terminal.'
-          }
-        }
       } catch (error) {
-        // Clean up
-        await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
-        
         const errorMessage = error instanceof Error ? error.message : String(error)
         
         // Check if user cancelled the password dialog
         if (errorMessage.includes('User canceled') || errorMessage.includes('-128')) {
+          await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
           return {
             success: false,
             message: 'Administrator access is required to install Homebrew',
@@ -139,12 +125,80 @@ export class Installer {
           }
         }
         
+        await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
         return {
           success: false,
-          message: 'Homebrew installation failed',
+          message: 'Failed to get administrator access',
           error: errorMessage
         }
       }
+
+      // Now run the Homebrew installer as the normal user
+      // It will use the cached sudo credentials when needed
+      return new Promise((resolve) => {
+        const child = spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
+          env: {
+            ...process.env,
+            CI: '1',
+            NONINTERACTIVE: '1',
+            HOMEBREW_NO_ANALYTICS: '1'
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+
+        let stdout = ''
+        let stderr = ''
+
+        child.stdout?.on('data', (data) => {
+          const text = data.toString()
+          stdout += text
+          console.log('[Homebrew Install]', text)
+        })
+
+        child.stderr?.on('data', (data) => {
+          const text = data.toString()
+          stderr += text
+          console.error('[Homebrew Install Error]', text)
+        })
+
+        child.on('close', async (code) => {
+          console.log('[Homebrew Install] Process exited with code:', code)
+          
+          // Clean up the temp script
+          await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
+
+          if (code === 0) {
+            await this.configureHomebrewPath()
+            resolve({ success: true, message: 'Homebrew installed successfully' })
+          } else {
+            // Check if Homebrew was actually installed despite non-zero exit
+            const recheckStatus = await this.checker.check('homebrew')
+            if (recheckStatus.installed) {
+              await this.configureHomebrewPath()
+              resolve({ success: true, message: 'Homebrew installed successfully' })
+            } else {
+              const errorDetails = stderr || stdout || 'Unknown error'
+              const truncatedError = errorDetails.length > 500 
+                ? errorDetails.slice(-500) 
+                : errorDetails
+              resolve({ 
+                success: false, 
+                message: 'Homebrew installation failed',
+                error: truncatedError
+              })
+            }
+          }
+        })
+
+        child.on('error', (error) => {
+          console.error('[Homebrew Install] Spawn error:', error)
+          resolve({ 
+            success: false, 
+            message: 'Failed to start Homebrew installation',
+            error: error.message
+          })
+        })
+      })
     } catch (error) {
       console.error('[Homebrew Install] Exception:', error)
       return { 
