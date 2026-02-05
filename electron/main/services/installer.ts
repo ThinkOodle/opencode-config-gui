@@ -134,17 +134,25 @@ export class Installer {
       }
 
       // Now run the Homebrew installer as the normal user
-      // It will use the cached sudo credentials when needed
+      // 
+      // IMPORTANT: We do NOT set NONINTERACTIVE or CI environment variables because
+      // those cause the Homebrew installer to use `sudo -n` (non-interactive sudo),
+      // which doesn't work with cached credentials. Instead, we:
+      // 1. Let the installer use regular `sudo` which will use the cached credentials
+      // 2. Pipe a newline to stdin to auto-confirm the "Press RETURN to continue" prompt
       return new Promise((resolve) => {
         const child = spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
           env: {
             ...process.env,
-            CI: '1',
-            NONINTERACTIVE: '1',
             HOMEBREW_NO_ANALYTICS: '1'
+            // Note: NOT setting CI or NONINTERACTIVE - see comment above
           },
           stdio: ['pipe', 'pipe', 'pipe']
         })
+
+        // Auto-confirm the "Press RETURN to continue" prompt
+        child.stdin?.write('\n')
+        child.stdin?.end()
 
         let stdout = ''
         let stderr = ''
