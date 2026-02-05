@@ -1,6 +1,6 @@
 {
   "name": "oodle-ai",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "OpenCode configuration app for macOS",
   "main": "./out/main/index.js",
   "type": "module",
