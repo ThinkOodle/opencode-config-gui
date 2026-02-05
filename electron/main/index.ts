@@ -1,14 +1,99 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { initAutoUpdater } from './updater'
+import { initAutoUpdater, registerUpdaterHandlers } from './updater'
 import { registerDependencyHandlers } from './ipc/dependencies'
 import { registerConfigHandlers } from './ipc/config'
 import { registerSkillsHandlers } from './ipc/skills'
 import { registerAgentsHandlers } from './ipc/agents'
 import { registerMcpHandlers } from './ipc/mcp'
 
+// Set app name for macOS menu bar (must be set before app is ready)
+// This ensures the correct name appears in dev mode too
+app.setName('Oodle AI')
+
 let mainWindow: BrowserWindow | null = null
+
+function createApplicationMenu(): void {
+  const isMac = process.platform === 'darwin'
+  
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // App menu (macOS only)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        {
+          label: 'Check for Updates...',
+          click: (): void => {
+            mainWindow?.webContents.send('app:navigate', '/settings')
+            mainWindow?.webContents.send('app:checkForUpdates')
+          }
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Settings...',
+          accelerator: 'CmdOrCtrl+,',
+          click: (): void => {
+            mainWindow?.webContents.send('app:navigate', '/settings')
+          }
+        },
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const }
+      ]
+    }] : []),
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        ...(is.dev ? [{ role: 'toggleDevTools' as const }] : []),
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' }
+      ]
+    },
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'close' },
+        ...(isMac ? [
+          { type: 'separator' as const },
+          { role: 'front' as const }
+        ] : [])
+      ]
+    }
+  ]
+  
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -50,7 +135,7 @@ function createWindow(): void {
 // App lifecycle
 app.whenReady().then(() => {
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.agency.oodle-ai')
+  electronApp.setAppUserModelId('com.thinkoodle.opencode-config-gui')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -58,19 +143,24 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Set up application menu
+  createApplicationMenu()
+
   // Register IPC handlers
   registerDependencyHandlers()
   registerConfigHandlers()
   registerSkillsHandlers()
   registerAgentsHandlers()
   registerMcpHandlers()
+  registerUpdaterHandlers(is.dev)
+
+  createWindow()
 
   // Initialize auto-updater (only in production)
+  // Must be after createWindow() so mainWindow is available
   if (!is.dev) {
     initAutoUpdater(mainWindow)
   }
-
-  createWindow()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

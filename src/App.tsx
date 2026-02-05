@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Shell } from './components/layout/Shell'
 import { Dashboard } from './pages/Dashboard'
@@ -11,6 +11,29 @@ import { SetupWizard } from './components/setup/SetupWizard'
 import { ErrorBoundary } from './components/common'
 import { useSetupStore } from './stores/setup-store'
 import { Loader2 } from 'lucide-react'
+
+// Listens for navigation events from main process (menu bar)
+function NavigationListener() {
+  const navigate = useNavigate()
+  
+  useEffect(() => {
+    const unsubscribeNavigate = window.api.onNavigate((path) => {
+      navigate(path)
+    })
+    
+    const unsubscribeUpdate = window.api.onCheckForUpdates(() => {
+      // Trigger update check - the Settings page will handle displaying status
+      window.api.checkForUpdates()
+    })
+    
+    return () => {
+      unsubscribeNavigate()
+      unsubscribeUpdate()
+    }
+  }, [navigate])
+  
+  return null
+}
 
 export default function App() {
   const { isSetupComplete, checkSetupStatus } = useSetupStore()
@@ -40,6 +63,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Shell>
+        <NavigationListener />
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/skills" element={<Skills />} />

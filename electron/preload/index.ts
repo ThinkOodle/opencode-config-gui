@@ -63,8 +63,14 @@ export interface OodleAPI {
   fetchAgentsCatalog: () => Promise<AgencyAgent[]>
   validateAgent: (content: string) => Promise<AgentValidationError[]>
   
-  // Updater events
+  // Updater
   onUpdaterStatus: (callback: (status: { status: string; data?: unknown }) => void) => () => void
+  checkForUpdates: () => Promise<unknown>
+  installUpdate: () => Promise<void>
+  
+  // Navigation from main process (menu)
+  onNavigate: (callback: (path: string) => void) => () => void
+  onCheckForUpdates: (callback: () => void) => () => void
 }
 
 // Expose the API to the renderer
@@ -122,7 +128,7 @@ const api: OodleAPI = {
   fetchAgentsCatalog: () => ipcRenderer.invoke('agents:fetchCatalog'),
   validateAgent: (content) => ipcRenderer.invoke('agents:validate', content),
   
-  // Updater events
+  // Updater
   onUpdaterStatus: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { status: string; data?: unknown }) => {
       callback(data)
@@ -132,7 +138,29 @@ const api: OodleAPI = {
     return () => {
       ipcRenderer.removeListener('updater:status', handler)
     }
-  }
+  },
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  
+  // Navigation from main process (menu)
+  onNavigate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, path: string) => {
+      callback(path)
+    }
+    ipcRenderer.on('app:navigate', handler)
+    return () => {
+      ipcRenderer.removeListener('app:navigate', handler)
+    }
+  },
+  onCheckForUpdates: (callback) => {
+    const handler = () => {
+      callback()
+    }
+    ipcRenderer.on('app:checkForUpdates', handler)
+    return () => {
+      ipcRenderer.removeListener('app:checkForUpdates', handler)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

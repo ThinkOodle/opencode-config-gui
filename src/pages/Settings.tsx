@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Card, CardHeader, Button, Input, Alert, StatusBadge } from '@/components/common'
-import { Key, RefreshCw, ExternalLink, Loader2, Monitor, Download } from 'lucide-react'
+import { Card, CardHeader, Button, Input, Alert, StatusBadge, Progress } from '@/components/common'
+import { Key, RefreshCw, ExternalLink, Loader2, Monitor, Download, RotateCcw, CheckCircle2 } from 'lucide-react'
+
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
 interface ProviderStatus {
   id: string
@@ -30,8 +32,53 @@ export function Settings() {
   const [desktopAppError, setDesktopAppError] = useState<{ message: string; details?: string } | null>(null)
   const [showErrorDetails, setShowErrorDetails] = useState(false)
 
+  // Update state
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [updateError, setUpdateError] = useState<string | null>(null)
+
   useEffect(() => {
     loadData()
+  }, [])
+
+  // Subscribe to updater status events
+  useEffect(() => {
+    const unsubscribe = window.api.onUpdaterStatus(({ status, data }) => {
+      switch (status) {
+        case 'checking-for-update':
+          setUpdateStatus('checking')
+          setUpdateError(null)
+          break
+        case 'update-available':
+          setUpdateStatus('available')
+          if (data && typeof data === 'object' && 'version' in data) {
+            setUpdateVersion(data.version as string)
+          }
+          break
+        case 'update-not-available':
+          setUpdateStatus('idle')
+          break
+        case 'download-progress':
+          setUpdateStatus('downloading')
+          if (data && typeof data === 'object' && 'percent' in data) {
+            setDownloadProgress(data.percent as number)
+          }
+          break
+        case 'update-downloaded':
+          setUpdateStatus('ready')
+          if (data && typeof data === 'object' && 'version' in data) {
+            setUpdateVersion(data.version as string)
+          }
+          break
+        case 'update-error':
+          setUpdateStatus('error')
+          setUpdateError(typeof data === 'string' ? data : 'Failed to check for updates')
+          break
+      }
+    })
+
+    return unsubscribe
   }, [])
 
   const loadData = async () => {
@@ -123,6 +170,21 @@ export function Settings() {
 
   const handleOpenDocs = (url: string) => {
     window.api.openExternal(url)
+  }
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking')
+    setUpdateError(null)
+    try {
+      await window.api.checkForUpdates()
+    } catch (error) {
+      setUpdateStatus('error')
+      setUpdateError(error instanceof Error ? error.message : 'Failed to check for updates')
+    }
+  }
+
+  const handleInstallUpdate = () => {
+    window.api.installUpdate()
   }
 
   if (isLoading) {
@@ -278,6 +340,101 @@ export function Settings() {
             )}
           </Alert>
         )}
+      </Card>
+
+      {/* Updates */}
+      <Card>
+        <CardHeader 
+          title="Updates" 
+          description="Keep Oodle AI up to date"
+        />
+        
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="w-5 h-5 text-zinc-400" />
+              <div>
+                <span className="font-medium text-zinc-100">Current Version</span>
+                <span className="ml-2 text-sm text-zinc-500">{appVersion}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Update status display */}
+          {updateStatus === 'idle' && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-sm text-zinc-400">Up to date</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleCheckForUpdates}
+              >
+                Check for Updates
+              </Button>
+            </div>
+          )}
+
+          {updateStatus === 'checking' && (
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+              <span className="text-sm text-zinc-400">Checking for updates...</span>
+            </div>
+          )}
+
+          {updateStatus === 'available' && (
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+              <span className="text-sm text-zinc-400">
+                Update available{updateVersion && ` (v${updateVersion})`}, starting download...
+              </span>
+            </div>
+          )}
+
+          {updateStatus === 'downloading' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-zinc-400">
+                  Downloading{updateVersion && ` v${updateVersion}`}...
+                </span>
+                <span className="text-zinc-300">{Math.round(downloadProgress)}%</span>
+              </div>
+              <Progress value={downloadProgress} size="sm" />
+            </div>
+          )}
+
+          {updateStatus === 'ready' && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <StatusBadge status="success" label={`v${updateVersion} ready`} size="sm" />
+              </div>
+              <Button
+                size="sm"
+                onClick={handleInstallUpdate}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Restart to Update
+              </Button>
+            </div>
+          )}
+
+          {updateStatus === 'error' && (
+            <div className="space-y-3">
+              <Alert variant="error" title="Update check failed">
+                {updateError || 'An unknown error occurred'}
+              </Alert>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleCheckForUpdates}
+              >
+                Try Again
+              </Button>
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* App Info */}

@@ -1,5 +1,6 @@
 appId: com.thinkoodle.opencode-config-gui
 productName: Oodle AI
+copyright: Copyright © 2025 Oodle
 directories:
   buildResources: resources
   output: dist
