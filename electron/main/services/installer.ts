@@ -1,5 +1,6 @@
 import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
+import * as pty from 'node-pty'
 import { DependencyChecker, DependencyStatus } from './dependency-checker'
 
 const execAsync = promisify(exec)
@@ -133,49 +134,40 @@ export class Installer {
         }
       }
 
-      // Now run the Homebrew installer as the normal user
-      // 
-      // IMPORTANT: We do NOT set NONINTERACTIVE or CI environment variables because
-      // those cause the Homebrew installer to use `sudo -n` (non-interactive sudo),
-      // which doesn't work with cached credentials. Instead, we:
-      // 1. Let the installer use regular `sudo` which will use the cached credentials
-      // 2. Pipe a newline to stdin to auto-confirm the "Press RETURN to continue" prompt
+      // Now run the Homebrew installer using node-pty to provide a proper TTY
+      // This prevents the "stdin is not a TTY" warning that causes the installer
+      // to use non-interactive mode (which breaks sudo credential caching)
       return new Promise((resolve) => {
-        const child = spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
+        const ptyProcess = pty.spawn('/bin/bash', ['/tmp/homebrew-install.sh'], {
+          name: 'xterm-color',
+          cols: 80,
+          rows: 30,
+          cwd: process.env.HOME,
           env: {
             ...process.env,
             HOMEBREW_NO_ANALYTICS: '1'
-            // Note: NOT setting CI or NONINTERACTIVE - see comment above
-          },
-          stdio: ['pipe', 'pipe', 'pipe']
+          }
         })
 
-        // Auto-confirm the "Press RETURN to continue" prompt
-        child.stdin?.write('\n')
-        child.stdin?.end()
+        let output = ''
 
-        let stdout = ''
-        let stderr = ''
+        ptyProcess.onData((data) => {
+          output += data
+          console.log('[Homebrew Install]', data)
 
-        child.stdout?.on('data', (data) => {
-          const text = data.toString()
-          stdout += text
-          console.log('[Homebrew Install]', text)
+          // Auto-respond to "Press RETURN to continue" prompt
+          if (data.includes('Press RETURN') || data.includes('Press ENTER') || data.includes('to continue')) {
+            ptyProcess.write('\r')
+          }
         })
 
-        child.stderr?.on('data', (data) => {
-          const text = data.toString()
-          stderr += text
-          console.error('[Homebrew Install Error]', text)
-        })
+        ptyProcess.onExit(async ({ exitCode }) => {
+          console.log('[Homebrew Install] Process exited with code:', exitCode)
 
-        child.on('close', async (code) => {
-          console.log('[Homebrew Install] Process exited with code:', code)
-          
           // Clean up the temp script
           await execAsync('rm -f /tmp/homebrew-install.sh').catch(() => {})
 
-          if (code === 0) {
+          if (exitCode === 0) {
             await this.configureHomebrewPath()
             resolve({ success: true, message: 'Homebrew installed successfully' })
           } else {
@@ -185,26 +177,16 @@ export class Installer {
               await this.configureHomebrewPath()
               resolve({ success: true, message: 'Homebrew installed successfully' })
             } else {
-              const errorDetails = stderr || stdout || 'Unknown error'
-              const truncatedError = errorDetails.length > 500 
-                ? errorDetails.slice(-500) 
-                : errorDetails
-              resolve({ 
-                success: false, 
+              const truncatedError = output.length > 500
+                ? output.slice(-500)
+                : output
+              resolve({
+                success: false,
                 message: 'Homebrew installation failed',
                 error: truncatedError
               })
             }
           }
-        })
-
-        child.on('error', (error) => {
-          console.error('[Homebrew Install] Spawn error:', error)
-          resolve({ 
-            success: false, 
-            message: 'Failed to start Homebrew installation',
-            error: error.message
-          })
         })
       })
     } catch (error) {

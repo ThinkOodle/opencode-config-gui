@@ -22,6 +22,7 @@ files:
   - '!**/node_modules/*/{*.md,*.ts,*.map}'
 asarUnpack:
   - resources/**
+  - node_modules/node-pty/**
 mac:
   icon: resources/icon.icns
   hardenedRuntime: true
