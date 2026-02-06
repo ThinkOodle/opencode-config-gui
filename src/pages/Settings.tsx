@@ -432,10 +432,10 @@ export function Settings() {
           <Button 
             variant="secondary" 
             className="justify-start"
-            onClick={() => handleOpenDocs('https://skills.sh')}
+            onClick={() => handleOpenDocs('https://github.com/ThinkOodle/ai-catalog')}
           >
             <ExternalLink className="w-4 h-4" />
-            Browse Skills
+            Agency Catalog
           </Button>
           <Button 
             variant="secondary" 

@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { DesktopAppStatus } from '../main/services/dependency-checker'
 import type { OpenCodeConfig, McpServerConfig } from '../main/services/config-manager'
 import type { ProviderTestResult } from '../main/services/env-manager'
-import type { Skill, SkillInstallResult, RepoInstallResult } from '../main/services/skills-manager'
+import type { Skill, SkillInstallResult } from '../main/services/skills-manager'
+import type { SkillRequestResult } from '../main/services/github-app'
 import type { InstalledMcp, McpInstallResult, McpConnectionResult } from '../main/services/mcp-manager'
 import type { AgencySkill, AgencyMcpServer, AgencyAgent } from '../main/services/agency-catalog'
 import type { Agent, AgentInstallResult, AgentValidationError } from '../main/services/agents-manager'
@@ -30,13 +31,12 @@ export interface OodleAPI {
   saveOpenCodeAuth: (apiKey: string) => Promise<void>
   
   // Skills
-  installSkillFromUrl: (url: string) => Promise<SkillInstallResult>
   installSkillFromCatalog: (skillId: string) => Promise<SkillInstallResult>
   listInstalledSkills: () => Promise<Skill[]>
   getSkillContent: (name: string) => Promise<string | null>
   removeSkill: (name: string) => Promise<void>
   fetchSkillsCatalog: () => Promise<AgencySkill[]>
-  installSkillsFromRepo: (url: string) => Promise<RepoInstallResult>
+  requestSkill: (url: string) => Promise<SkillRequestResult>
   
   // MCP
   installMcp: (serverId: string, config: McpServerConfig) => Promise<McpInstallResult>
@@ -88,13 +88,12 @@ const api: OodleAPI = {
   saveOpenCodeAuth: (apiKey) => ipcRenderer.invoke('env:saveOpenCodeAuth', apiKey),
   
   // Skills
-  installSkillFromUrl: (url) => ipcRenderer.invoke('skills:installFromUrl', url),
   installSkillFromCatalog: (skillId) => ipcRenderer.invoke('skills:installFromCatalog', skillId),
   listInstalledSkills: () => ipcRenderer.invoke('skills:list'),
   getSkillContent: (name) => ipcRenderer.invoke('skills:getContent', name),
   removeSkill: (name) => ipcRenderer.invoke('skills:remove', name),
   fetchSkillsCatalog: () => ipcRenderer.invoke('skills:fetchCatalog'),
-  installSkillsFromRepo: (url) => ipcRenderer.invoke('skills:installFromRepo', url),
+  requestSkill: (url) => ipcRenderer.invoke('skills:requestSkill', url),
   
   // MCP
   installMcp: (serverId, config) => ipcRenderer.invoke('mcp:install', serverId, config),

@@ -1,16 +1,17 @@
 import { ipcMain } from 'electron'
 import { SkillsManager } from '../services/skills-manager'
 import { AgencyCatalog } from '../services/agency-catalog'
+import { GitHubAppService } from '../services/github-app'
 
-const skillsManager = new SkillsManager()
 const catalog = new AgencyCatalog()
+const githubApp = new GitHubAppService(
+  process.env.GITHUB_APP_ID || '',
+  process.env.GITHUB_APP_PRIVATE_KEY || '',
+  process.env.GITHUB_APP_INSTALLATION_ID || ''
+)
+const skillsManager = new SkillsManager(catalog, githubApp)
 
 export function registerSkillsHandlers(): void {
-  // Install skill from skills.sh URL
-  ipcMain.handle('skills:installFromUrl', async (_, url: string) => {
-    return skillsManager.installFromUrl(url)
-  })
-
   // Install skill from agency catalog
   ipcMain.handle('skills:installFromCatalog', async (_, skillId: string) => {
     return skillsManager.installFromCatalog(skillId)
@@ -36,8 +37,8 @@ export function registerSkillsHandlers(): void {
     return catalog.fetchSkills()
   })
 
-  // Install all skills from a repository
-  ipcMain.handle('skills:installFromRepo', async (_, url: string) => {
-    return skillsManager.installFromRepo(url)
+  // Request a skill to be added to the catalog (creates a PR)
+  ipcMain.handle('skills:requestSkill', async (_, url: string) => {
+    return skillsManager.requestSkill(url)
   })
 }

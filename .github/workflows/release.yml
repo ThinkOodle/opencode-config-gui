@@ -82,6 +82,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          GITHUB_APP_ID: ${{ secrets.SKILL_REQUEST_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.SKILL_REQUEST_APP_PRIVATE_KEY }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.SKILL_REQUEST_APP_INSTALLATION_ID }}
         run: npm run release
 
       - name: Cleanup keychain

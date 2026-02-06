@@ -1,6 +1,8 @@
 import { homedir } from 'os'
-import { join, basename } from 'path'
+import { join } from 'path'
 import { readFile, writeFile, mkdir, readdir, rm, stat } from 'fs/promises'
+import type { AgencyCatalog } from './agency-catalog'
+import type { GitHubAppService, SkillRequestResult } from './github-app'
 
 export interface Skill {
   name: string
@@ -16,81 +18,107 @@ export interface SkillInstallResult {
   error?: string
 }
 
-export interface RepoInstallResult {
-  success: boolean
-  installed: Skill[]
-  failed: { name: string; error: string }[]
-  error?: string
-}
-
 export class SkillsManager {
   private globalSkillsDir = join(homedir(), '.config', 'opencode', 'skills')
+  private catalog: AgencyCatalog
+  private githubApp: GitHubAppService
 
-  async installFromUrl(url: string): Promise<SkillInstallResult> {
+  constructor(catalog: AgencyCatalog, githubApp: GitHubAppService) {
+    this.catalog = catalog
+    this.githubApp = githubApp
+  }
+
+  /**
+   * Install a skill from the agency catalog by its ID.
+   * Fetches the SKILL.md content from the catalog and writes it to disk.
+   */
+  async installFromCatalog(skillId: string): Promise<SkillInstallResult> {
     try {
+      // Validate skill ID format
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillId)) {
+        return { success: false, error: 'Invalid skill ID format' }
+      }
+
+      // Fetch skill content from the catalog
+      const content = await this.catalog.fetchSkillContent(skillId)
+
+      // Parse and validate frontmatter
+      const skill = this.parseSkillContent(content, skillId)
+      if (!skill) {
+        return { success: false, error: 'Invalid SKILL.md format: missing required frontmatter' }
+      }
+
+      // Write skill to disk
+      const skillDir = join(this.globalSkillsDir, skillId)
+      await mkdir(skillDir, { recursive: true })
+      await writeFile(join(skillDir, 'SKILL.md'), content, 'utf-8')
+
+      return {
+        success: true,
+        skill: { ...skill, path: skillDir, isGlobal: true },
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to install skill from catalog',
+      }
+    }
+  }
+
+  /**
+   * Request a skill to be added to the agency catalog.
+   * Fetches the skill content from skills.sh, then creates a PR on ai-catalog.
+   */
+  async requestSkill(url: string): Promise<SkillRequestResult> {
+    try {
+      if (!this.githubApp.isConfigured()) {
+        return { success: false, error: 'Skill requests are not configured. Contact your administrator.' }
+      }
+
       // Validate URL
       const parsed = new URL(url)
       if (parsed.hostname !== 'skills.sh') {
         return { success: false, error: 'URL must be from skills.sh' }
       }
 
-      // Parse skill path: /org/repo/skill-name (3+ parts) or /org/skill-name (2 parts for repo)
+      // Parse skill path
       const pathParts = parsed.pathname.split('/').filter(Boolean)
       if (pathParts.length < 2) {
-        return { success: false, error: 'Invalid skills.sh URL format' }
+        return { success: false, error: 'Invalid skills.sh URL format. Expected: skills.sh/org/repo/skill' }
       }
 
-      // Check if this is a repository URL (only 2 parts = org/repo)
-      if (pathParts.length === 2) {
-        return { 
-          success: false, 
-          error: 'This looks like a repository URL. The app will fetch the skill list automatically.' 
-        }
-      }
-
+      // Extract the skill name from the URL
       const skillName = pathParts[pathParts.length - 1]
 
-      // Validate skill name format
       if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName)) {
-        return { success: false, error: 'Invalid skill name format' }
+        return { success: false, error: 'Invalid skill name format in URL' }
       }
 
-      // Fetch skill content
-      // skills.sh URLs typically map to GitHub raw content
-      // Format: https://skills.sh/org/repo/skill-name -> raw GitHub content
-      const content = await this.fetchSkillContent(url, pathParts)
-      
+      // Fetch skill content from skills.sh
+      const content = await this.fetchSkillFromSkillsSh(url, pathParts)
       if (!content) {
-        return { success: false, error: 'Failed to fetch skill content' }
+        return { success: false, error: 'Failed to fetch skill content from skills.sh' }
       }
 
-      // Parse and validate frontmatter
+      // Parse frontmatter to get name and description
       const skill = this.parseSkillContent(content, skillName)
       if (!skill) {
-        return { success: false, error: 'Invalid SKILL.md format: missing required frontmatter' }
+        return { success: false, error: 'Invalid SKILL.md format: missing required frontmatter (name, description)' }
       }
 
-      // Write skill to disk
-      const skillDir = join(this.globalSkillsDir, skillName)
-      await mkdir(skillDir, { recursive: true })
-      await writeFile(join(skillDir, 'SKILL.md'), content, 'utf-8')
-
-      return { 
-        success: true, 
-        skill: { ...skill, path: skillDir, isGlobal: true } 
-      }
+      // Create a PR on the ai-catalog repo
+      return await this.githubApp.createSkillRequestPR(
+        skillName,
+        skill.description,
+        content,
+        url
+      )
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to install skill' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to submit skill request',
       }
     }
-  }
-
-  async installFromCatalog(skillId: string): Promise<SkillInstallResult> {
-    // This will be implemented to fetch from the agency catalog
-    // For now, return a placeholder
-    return { success: false, error: 'Catalog installation not yet implemented' }
   }
 
   async listInstalled(): Promise<Skill[]> {
@@ -150,173 +178,33 @@ export class SkillsManager {
     await rm(skillDir, { recursive: true })
   }
 
-  async installFromRepo(url: string): Promise<RepoInstallResult> {
+  /**
+   * Fetch skill content from skills.sh.
+   * Tries direct fetch first, then falls back to GitHub raw URL patterns.
+   */
+  private async fetchSkillFromSkillsSh(url: string, pathParts: string[]): Promise<string | null> {
     try {
-      // Validate URL
-      const parsed = new URL(url)
-      if (parsed.hostname !== 'skills.sh') {
-        return { success: false, installed: [], failed: [], error: 'URL must be from skills.sh' }
-      }
-
-      // Parse path - should be exactly 2 parts: org/repo
-      const pathParts = parsed.pathname.split('/').filter(Boolean)
-      if (pathParts.length !== 2) {
-        return { success: false, installed: [], failed: [], error: 'Invalid repository URL format. Expected: skills.sh/org/repo' }
-      }
-
-      const [org, repo] = pathParts
-
-      // Use GitHub API to find all SKILL.md files in the repo
-      const skillPaths = await this.findSkillsInRepo(org, repo)
-      
-      if (skillPaths.length === 0) {
-        return { success: false, installed: [], failed: [], error: 'No skills found in this repository' }
-      }
-
-      // Install each skill
-      const installed: Skill[] = []
-      const failed: { name: string; error: string }[] = []
-
-      for (const skillPath of skillPaths) {
-        // Extract skill name from path (e.g., "skills/my-skill/SKILL.md" -> "my-skill")
-        const pathSegments = skillPath.split('/')
-        const skillDirIndex = pathSegments.findIndex(s => s.toUpperCase() === 'SKILL.MD') - 1
-        const skillName = skillDirIndex >= 0 ? pathSegments[skillDirIndex] : pathSegments[pathSegments.length - 2]
-
-        // Validate skill name format
-        if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName)) {
-          failed.push({ name: skillName, error: 'Invalid skill name format' })
-          continue
-        }
-
-        try {
-          // Fetch the SKILL.md content
-          const content = await this.fetchRawGitHubFile(org, repo, skillPath)
-          
-          if (!content) {
-            failed.push({ name: skillName, error: 'Failed to fetch skill content' })
-            continue
-          }
-
-          // Parse and validate
-          const skill = this.parseSkillContent(content, skillName)
-          if (!skill) {
-            failed.push({ name: skillName, error: 'Invalid SKILL.md format' })
-            continue
-          }
-
-          // Write to disk
-          const skillDir = join(this.globalSkillsDir, skillName)
-          await mkdir(skillDir, { recursive: true })
-          await writeFile(join(skillDir, 'SKILL.md'), content, 'utf-8')
-
-          installed.push({ ...skill, path: skillDir, isGlobal: true })
-        } catch (error) {
-          failed.push({ 
-            name: skillName, 
-            error: error instanceof Error ? error.message : 'Installation failed' 
-          })
-        }
-      }
-
-      return {
-        success: installed.length > 0,
-        installed,
-        failed
-      }
-    } catch (error) {
-      return { 
-        success: false, 
-        installed: [],
-        failed: [],
-        error: error instanceof Error ? error.message : 'Failed to install from repository' 
-      }
-    }
-  }
-
-  private async findSkillsInRepo(org: string, repo: string): Promise<string[]> {
-    // Use GitHub API to get repo tree and find all SKILL.md files
-    const branches = ['main', 'master']
-    
-    for (const branch of branches) {
-      try {
-        const apiUrl = `https://api.github.com/repos/${org}/${repo}/git/trees/${branch}?recursive=1`
-        const response = await fetch(apiUrl, {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Oodle-AI'
-          }
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          const tree = data.tree as { path: string; type: string }[]
-          
-          // Find all SKILL.md files (case-insensitive)
-          const skillFiles = tree
-            .filter(item => item.type === 'blob' && item.path.toUpperCase().endsWith('/SKILL.MD'))
-            .map(item => item.path)
-
-          if (skillFiles.length > 0) {
-            return skillFiles
-          }
-        }
-      } catch {
-        // Try next branch
-        continue
-      }
-    }
-
-    return []
-  }
-
-  private async fetchRawGitHubFile(org: string, repo: string, path: string): Promise<string | null> {
-    const branches = ['main', 'master']
-    
-    for (const branch of branches) {
-      try {
-        const rawUrl = `https://raw.githubusercontent.com/${org}/${repo}/${branch}/${path}`
-        const response = await fetch(rawUrl)
-        if (response.ok) {
-          return await response.text()
-        }
-      } catch {
-        continue
-      }
-    }
-    
-    return null
-  }
-
-  private async fetchSkillContent(url: string, pathParts: string[]): Promise<string | null> {
-    try {
-      // Try to fetch directly from skills.sh first
-      // skills.sh may serve raw content or redirect to GitHub
+      // Try direct fetch from skills.sh
       const response = await fetch(url, {
-        headers: {
-          'Accept': 'text/plain, text/markdown'
-        }
+        headers: { Accept: 'text/plain, text/markdown' },
       })
 
       if (response.ok) {
         const content = await response.text()
-        // Check if it looks like a SKILL.md
         if (content.includes('---') && (content.includes('name:') || content.includes('description:'))) {
           return content
         }
       }
 
-      // If direct fetch didn't work, try constructing GitHub raw URL
-      // Typical mapping: skills.sh/org/repo/skill -> github.com/org/repo/.../skill/SKILL.md
+      // Fall back to GitHub raw URL patterns
       if (pathParts.length >= 3) {
         const [org, repo, ...rest] = pathParts
         const skillPath = rest.join('/')
-        
-        // Try common GitHub raw URL patterns
+
         const githubUrls = [
           `https://raw.githubusercontent.com/${org}/${repo}/main/skills/${skillPath}/SKILL.md`,
           `https://raw.githubusercontent.com/${org}/${repo}/main/${skillPath}/SKILL.md`,
-          `https://raw.githubusercontent.com/${org}/${repo}/master/skills/${skillPath}/SKILL.md`
+          `https://raw.githubusercontent.com/${org}/${repo}/master/skills/${skillPath}/SKILL.md`,
         ]
 
         for (const ghUrl of githubUrls) {
@@ -378,7 +266,7 @@ export class SkillsManager {
     return {
       name,
       description,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     }
   }
 }

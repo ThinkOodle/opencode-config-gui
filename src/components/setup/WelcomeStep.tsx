@@ -6,7 +6,7 @@ const features = [
   {
     icon: Sparkles,
     title: 'Install Skills',
-    description: 'Add AI agent skills from skills.sh or your agency catalog'
+    description: 'Add AI agent skills from your agency catalog'
   },
   {
     icon: Plug,

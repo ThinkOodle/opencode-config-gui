@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, Button, Input, Alert, StatusBadge } from '@/components/common'
-import { Download, Trash2, ExternalLink, Loader2 } from 'lucide-react'
+import { Download, Trash2, Loader2, Send, ExternalLink } from 'lucide-react'
 
 interface Skill {
   name: string
@@ -17,14 +17,20 @@ interface AgencySkill {
 }
 
 export function Skills() {
-  const [skillUrl, setSkillUrl] = useState('')
-  const [isInstalling, setIsInstalling] = useState(false)
-  const [installError, setInstallError] = useState<string | null>(null)
-  const [installSuccess, setInstallSuccess] = useState<string | null>(null)
-  
   const [installedSkills, setInstalledSkills] = useState<Skill[]>([])
   const [catalogSkills, setCatalogSkills] = useState<AgencySkill[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Catalog install state
+  const [installingSkillId, setInstallingSkillId] = useState<string | null>(null)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [catalogSuccess, setCatalogSuccess] = useState<string | null>(null)
+
+  // Skill request state
+  const [requestUrl, setRequestUrl] = useState('')
+  const [isRequesting, setIsRequesting] = useState(false)
+  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestPrUrl, setRequestPrUrl] = useState<string | null>(null)
 
   useEffect(() => {
     loadSkills()
@@ -44,60 +50,23 @@ export function Skills() {
     }
   }
 
-  const handleInstallFromUrl = async () => {
-    const url = skillUrl.trim()
-    if (!url) return
-    
-    setInstallError(null)
-    setInstallSuccess(null)
-    setIsInstalling(true)
+  const handleInstallFromCatalog = async (skillId: string) => {
+    setCatalogError(null)
+    setCatalogSuccess(null)
+    setInstallingSkillId(skillId)
 
     try {
-      // Check if it's a repo URL (2-part path: org/repo)
-      const parsed = new URL(url)
-      if (parsed.hostname === 'skills.sh') {
-        const pathParts = parsed.pathname.split('/').filter(Boolean)
-        
-        if (pathParts.length === 2) {
-          // It's a repo URL - install all skills from the repo
-          const result = await window.api.installSkillsFromRepo(url)
-          
-          if (result.success && result.installed.length > 0) {
-            const names = result.installed.map(s => s.name).join(', ')
-            setInstallSuccess(`Installed ${result.installed.length} skill${result.installed.length > 1 ? 's' : ''}: ${names}`)
-            setSkillUrl('')
-            await loadSkills()
-          } else if (result.error) {
-            setInstallError(result.error)
-          } else if (result.failed.length > 0) {
-            const failedNames = result.failed.map(f => `${f.name} (${f.error})`).join(', ')
-            setInstallError(`Failed to install: ${failedNames}`)
-          } else {
-            setInstallError('No skills found in this repository')
-          }
-          
-          setIsInstalling(false)
-          return
-        }
-      }
-    } catch {
-      // Invalid URL, fall through to single skill install
-    }
-
-    // Single skill install (existing logic)
-    try {
-      const result = await window.api.installSkillFromUrl(url)
+      const result = await window.api.installSkillFromCatalog(skillId)
       if (result.success && result.skill) {
-        setInstallSuccess(`Installed "${result.skill.name}" successfully`)
-        setSkillUrl('')
+        setCatalogSuccess(`Installed "${result.skill.name}" successfully`)
         await loadSkills()
       } else {
-        setInstallError(result.error || 'Failed to install skill')
+        setCatalogError(result.error || 'Failed to install skill')
       }
     } catch (error) {
-      setInstallError(error instanceof Error ? error.message : 'Failed to install skill')
+      setCatalogError(error instanceof Error ? error.message : 'Failed to install skill')
     } finally {
-      setIsInstalling(false)
+      setInstallingSkillId(null)
     }
   }
 
@@ -112,66 +81,69 @@ export function Skills() {
     }
   }
 
-  const handleOpenSkillsSh = () => {
-    window.api.openExternal('https://skills.sh')
+  const handleRequestSkill = async () => {
+    const url = requestUrl.trim()
+    if (!url) return
+
+    setRequestError(null)
+    setRequestPrUrl(null)
+    setIsRequesting(true)
+
+    try {
+      const result = await window.api.requestSkill(url)
+      if (result.success && result.prUrl) {
+        setRequestPrUrl(result.prUrl)
+        setRequestUrl('')
+      } else {
+        setRequestError(result.error || 'Failed to submit skill request')
+      }
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Failed to submit skill request')
+    } finally {
+      setIsRequesting(false)
+    }
+  }
+
+  const handleOpenPrUrl = () => {
+    if (requestPrUrl) {
+      window.api.openExternal(requestPrUrl)
+    }
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Install from URL */}
+      {/* Agency catalog */}
       <Card>
         <CardHeader 
-          title="Install from URL" 
-          description="Paste a skills.sh link to install a skill or entire repository"
-          action={
-            <Button variant="ghost" size="sm" onClick={handleOpenSkillsSh}>
-              Browse skills.sh
-              <ExternalLink className="w-4 h-4" />
-            </Button>
-          }
+          title="Agency Skills" 
+          description="Curated skills from your organization"
         />
-        
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <Input
-              placeholder="https://skills.sh/org/repo or https://skills.sh/org/repo/skill"
-              value={skillUrl}
-              onChange={(e) => {
-                setSkillUrl(e.target.value)
-                setInstallError(null)
-                setInstallSuccess(null)
-              }}
-              error={installError || undefined}
-            />
-          </div>
-          <Button 
-            onClick={handleInstallFromUrl}
-            disabled={!skillUrl.trim() || isInstalling}
-            isLoading={isInstalling}
-          >
-            <Download className="w-4 h-4" />
-            Install
-          </Button>
-        </div>
 
-        {installSuccess && (
-          <Alert variant="success" className="mt-4">
-            {installSuccess}
+        {catalogError && (
+          <Alert variant="error" className="mb-4">
+            {catalogError}
           </Alert>
         )}
-      </Card>
-
-      {/* Agency catalog */}
-      {catalogSkills.length > 0 && (
-        <Card>
-          <CardHeader 
-            title="Agency Skills" 
-            description="Curated skills from your organization"
-          />
-          
+        {catalogSuccess && (
+          <Alert variant="success" className="mb-4">
+            {catalogSuccess}
+          </Alert>
+        )}
+        
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 text-zinc-400">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+            Loading catalog...
+          </div>
+        ) : catalogSkills.length === 0 ? (
+          <div className="text-center py-8 text-zinc-500">
+            No skills available in the catalog yet.
+          </div>
+        ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {catalogSkills.map((skill) => {
               const isInstalled = installedSkills.some(s => s.name === skill.id)
+              const isInstalling = installingSkillId === skill.id
               
               return (
                 <div 
@@ -183,8 +155,21 @@ export function Skills() {
                     {isInstalled && <StatusBadge status="success" label="Installed" size="sm" />}
                   </div>
                   <p className="text-sm text-zinc-400 mb-3">{skill.description}</p>
+                  {skill.category && (
+                    <div className="mb-3">
+                      <span className="inline-block text-xs px-2 py-0.5 rounded bg-zinc-700/50 text-zinc-400">
+                        {skill.category}
+                      </span>
+                    </div>
+                  )}
                   {!isInstalled && (
-                    <Button size="sm" variant="secondary">
+                    <Button 
+                      size="sm" 
+                      variant="secondary"
+                      onClick={() => handleInstallFromCatalog(skill.id)}
+                      disabled={isInstalling}
+                      isLoading={isInstalling}
+                    >
                       <Download className="w-4 h-4" />
                       Install
                     </Button>
@@ -193,8 +178,8 @@ export function Skills() {
               )
             })}
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* Installed skills */}
       <Card>
@@ -210,7 +195,7 @@ export function Skills() {
           </div>
         ) : installedSkills.length === 0 ? (
           <div className="text-center py-8 text-zinc-500">
-            No skills installed yet. Install one from the URL field above or browse skills.sh.
+            No skills installed yet. Install one from the catalog above.
           </div>
         ) : (
           <div className="divide-y divide-zinc-800">
@@ -232,6 +217,59 @@ export function Skills() {
             ))}
           </div>
         )}
+      </Card>
+
+      {/* Request a skill */}
+      <Card>
+        <CardHeader 
+          title="Request a Skill" 
+          description="Can't find what you need? Submit a skills.sh URL for review by the team."
+        />
+        
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <Input
+              placeholder="https://skills.sh/org/repo/skill-name"
+              value={requestUrl}
+              onChange={(e) => {
+                setRequestUrl(e.target.value)
+                setRequestError(null)
+                setRequestPrUrl(null)
+              }}
+              error={requestError || undefined}
+            />
+          </div>
+          <Button 
+            onClick={handleRequestSkill}
+            disabled={!requestUrl.trim() || isRequesting}
+            isLoading={isRequesting}
+            variant="secondary"
+          >
+            <Send className="w-4 h-4" />
+            Submit Request
+          </Button>
+        </div>
+
+        {requestPrUrl && (
+          <Alert variant="success" className="mt-4">
+            <div className="flex items-center justify-between">
+              <span>Request submitted! Your skill is pending review.</span>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={handleOpenPrUrl}
+                className="ml-3 shrink-0"
+              >
+                <ExternalLink className="w-4 h-4" />
+                View PR
+              </Button>
+            </div>
+          </Alert>
+        )}
+
+        <p className="text-xs text-zinc-500 mt-3">
+          The skill content will be fetched and submitted as a pull request to the agency catalog for review.
+        </p>
       </Card>
     </div>
   )
